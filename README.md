@@ -1,223 +1,125 @@
-# PDF RAG Study Assistant
+# PDF RAG Study Assistant — Similarity Threshold Edition
 
-A web and command-line study assistant that reads local PDF notes, splits their
-text into overlapping chunks, stores semantic embeddings in ChromaDB, retrieves
-the most relevant passages, and asks a Groq-hosted language model to answer in
-natural Banglish using the retrieved PDF content.
+A small PDF question-answering app built to practice the main RAG steps:
 
-## Features
+1. Extract text from local PDFs.
+2. Split text into overlapping chunks.
+3. Create embeddings with `all-MiniLM-L6-v2`.
+4. Store embeddings and page metadata in ChromaDB.
+5. Retrieve the most relevant chunks for a question.
+6. Reject weak matches with a configurable similarity threshold.
+7. Ask Groq to answer only from accepted PDF context.
 
-- Reads one or more text-based PDF files.
-- Preserves the source filename and page number for every chunk.
-- Stores embeddings locally in a persistent ChromaDB database.
-- Supports semantic search without calling an LLM.
-- Generates answers grounded in the retrieved PDF passages.
-- Includes a polished Streamlit chat interface with PDF upload and indexing.
-- Shows source pages and the retrieved passages below each web answer.
-- Loads the Groq API key from a local `.env` file.
-- Includes clear checks for missing PDFs, scanned PDFs, and a missing index.
+The project supports a command-line workflow and a polished local Streamlit web UI. The UI can upload PDFs, rebuild the index, choose one PDF or all PDFs, tune the threshold live, keep question history for the current session, and show source page numbers. Answers are generated in Banglish, while source PDF names and page numbers are shown separately.
 
-## How it works
+## What changed in this version
 
-1. PDF text is extracted with `pypdf`.
-2. Text is divided into 500-character chunks with 100-character overlap.
-3. `all-MiniLM-L6-v2` converts every chunk into an embedding.
-4. ChromaDB stores the embeddings, text, filename, and page number locally.
-5. A question is embedded and matched with the nearest PDF chunks.
-6. Groq generates an answer from those retrieved chunks.
+- Added one shared retrieval module: `src/retrieval.py`.
+- Added a distance-based relevance threshold. ChromaDB distance is lower for better matches.
+- Default threshold is `0.75`.
+- If no retrieved chunk has `distance <= threshold`, the app does not call Groq and reports that the answer was not found in the PDF.
+- Streamlit and CLI output show accepted sources/pages.
+- Streamlit UI supports local PDF upload, PDF selection, live threshold tuning, and session question history.
+- Uploaded PDFs are saved under `data/`; click **Rebuild vector index** after uploading before asking questions.
+- Embedding model loading is cached during a process.
+- Added threshold unit tests and a smaller, readable `requirements.txt`.
 
-## Project structure
+> This is technically a maximum **distance** threshold (lower is better), often called a similarity threshold in the UI. `0.75` is an initial value based on this embedding model and should be tuned for your PDFs.
+
+## Folder structure
 
 ```text
-pdf-rag-study-assistant-main/
-├── .streamlit/config.toml  # Web theme and upload limit
-├── app.py                  # Streamlit web interface
-├── data/                   # Put local PDF files here
+pdf-rag-study-assistant-threshold-v2/
+├── app.py
+├── data/                         # Put local PDFs here; PDFs are ignored by Git
 ├── src/
-│   ├── config.py           # Shared paths and model settings
-│   ├── embedding_model.py  # Cached embedding-model loader
-│   ├── read_pdf.py         # Extract and preview PDF text
-│   ├── chunk_pdf.py        # Split extracted text into chunks
-│   ├── store_embeddings.py # Build the local ChromaDB index
-│   ├── search_pdf.py       # Search the index without an LLM
-│   └── rag_answer.py       # Retrieve context and generate an answer
-├── tests/                  # Lightweight unit tests
-├── .env.example            # Environment-variable template
+│   ├── read_pdf.py               # PDF text extraction
+│   ├── chunk_pdf.py               # Overlapping chunk creation
+│   ├── store_embeddings.py        # Build/rebuild ChromaDB
+│   ├── retrieval.py               # Shared retrieval + threshold filtering
+│   ├── search_pdf.py              # Inspect accepted/rejected matches
+│   └── rag_answer.py               # Groq-grounded answer generation
+├── tests/test_retrieval.py
+├── .env.example
 ├── .gitignore
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
-## Requirements
+## Windows PowerShell setup
 
-- Python 3.11 or 3.12 is recommended.
-- Internet access is needed during installation, the first embedding-model
-  download, and Groq answer generation.
-- A Groq API key is required only for `rag_answer.py`.
+Python 3.11 or 3.12 is recommended for the ML dependencies on Windows. If your current Python 3.14 environment shows a `torchvision` or DLL error, install one of those versions and create a fresh virtual environment.
 
-## Setup on Windows PowerShell
-
-Run these commands from the project folder:
+Run these commands from the project root (the folder containing `app.py`):
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-```
-
-Open `.env` and replace the placeholder with your real Groq API key:
-
-```dotenv
-GROQ_API_KEY=your_real_api_key
-```
-
-If PowerShell blocks virtual-environment activation, run this once in the same
-terminal and then activate again:
-
-```powershell
+python -m venv .venv
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
-This changes the policy only for the current PowerShell process.
+Copy one or more text-based PDFs into `data/`, then build the vector database:
 
-## Setup on Linux or macOS
+```powershell
+python src\store_embeddings.py
+```
 
-Run these commands from the project folder:
+Set the Groq key for the current PowerShell window:
+
+```powershell
+$env:GROQ_API_KEY="your-groq-api-key"
+```
+
+Run the web app:
+
+```powershell
+streamlit run app.py
+```
+
+Or use the CLI:
+
+```powershell
+python src\rag_answer.py
+```
+
+## Tune the threshold
+
+Inspect distances first:
+
+```powershell
+python src\search_pdf.py
+```
+
+Then change the value for the current terminal session. Lower values are stricter; higher values allow more context:
+
+```powershell
+$env:RAG_DISTANCE_THRESHOLD="0.85"
+streamlit run app.py
+```
+
+Use a few questions whose answers are definitely in the PDFs and a few unrelated questions. A good threshold accepts the first group and rejects the second. The threshold affects retrieval only; it does not change the embedding model.
+
+## Linux/macOS commands
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-cp .env.example .env
-```
-
-Then edit `.env` and replace the placeholder with your real Groq API key.
-
-## Use the assistant
-
-### Recommended: launch the web interface
-
-```bash
+python src/store_embeddings.py
+export GROQ_API_KEY="your-groq-api-key"
+export RAG_DISTANCE_THRESHOLD="0.75"
 streamlit run app.py
 ```
 
-Streamlit prints a local address, normally `http://localhost:8501`. Open that
-address in your browser. From the sidebar you can:
+## Important notes
 
-1. Upload one or more text-based PDFs.
-2. Save the uploaded PDFs into `data/`.
-3. Build or rebuild the knowledge base.
-4. Ask questions through the chat box.
+- Run `store_embeddings.py` again whenever PDFs are added or changed.
+- Keep API keys out of Git. `.env.example` is only a template; never commit a real key.
+- Scanned/image-only PDFs need OCR before text extraction can read them.
+- The current generator uses Groq (`openai/gpt-oss-20b`); the threshold layer is independent of the LLM provider.
 
-The first index build can take longer because the embedding model must be
-downloaded. The app keeps the loaded embedding model in memory so later
-questions are faster.
+## Tests
 
-### Command-line workflow
-
-#### 1. Add PDF files
-
-Place one or more `.pdf` files inside the `data` folder. Local PDFs are ignored
-by Git so private study documents are not accidentally committed.
-
-#### 2. Optional: preview extracted text
-
-```bash
-python -m src.read_pdf
+```powershell
+python -m pytest -q
 ```
-
-#### 3. Optional: preview text chunks
-
-```bash
-python -m src.chunk_pdf
-```
-
-#### 4. Build or rebuild the vector database
-
-```bash
-python -m src.store_embeddings
-```
-
-Run this command again whenever PDFs are added, removed, or changed. Rebuilding
-replaces the previous `course_notes` collection, preventing duplicate chunks.
-
-#### 5. Search without generating an answer
-
-```bash
-python -m src.search_pdf "What is a shell script?"
-```
-
-To request a different number of matching chunks:
-
-```bash
-python -m src.search_pdf "What is a shell script?" --results 5
-```
-
-#### 6. Ask the RAG assistant
-
-Interactive mode:
-
-```bash
-python -m src.rag_answer
-```
-
-Or pass the question directly:
-
-```bash
-python -m src.rag_answer "What is a shell script?"
-```
-
-## Run tests
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-## Common problems
-
-### No PDF found
-
-Make sure at least one file ending in `.pdf` is directly inside `data/`, then
-run the command again.
-
-### No extractable text was found
-
-The current project does not perform OCR. A scanned image-only PDF must first be
-converted to a searchable/text-based PDF with an OCR tool.
-
-### The vector database or PDF index is missing
-
-Build it before searching or asking questions:
-
-```bash
-python -m src.store_embeddings
-```
-
-### `GROQ_API_KEY` was not found
-
-Create `.env` from `.env.example`, add the key, save the file, and run the
-assistant again. Never commit `.env` or paste a real API key into source code.
-
-### The first run is slow
-
-The embedding model is downloaded on first use. Later runs reuse the local
-model cache.
-
-## Current limitations
-
-- Image-only PDFs need OCR before this project can read them.
-- Chunking is character-based, so it can split a sentence between chunks.
-- Answers depend on the quality of PDF extraction and retrieval.
-- The web interface is intended for local use and does not include user accounts.
-- The model may still make mistakes, so verify important answers against the
-  cited source filename and page in the retrieved context.
-
-## Security and privacy
-
-- `.env`, local PDFs, and `chroma_db/` are excluded from Git.
-- PDF text sent as context to Groq leaves the local machine during answer
-  generation. Use `search_pdf.py` if the documents must remain fully local.
-- Treat model output as study assistance, not as an authoritative source.

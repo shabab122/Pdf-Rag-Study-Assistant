@@ -1,82 +1,56 @@
-from .config import CHUNK_OVERLAP, CHUNK_SIZE, PDF_FOLDER
-from .read_pdf import find_pdf_files, read_pdf_pages
+from pathlib import Path
+
+try:
+    from .read_pdf import read_pdf_pages
+except ImportError:  # Supports: python src/chunk_pdf.py
+    from read_pdf import read_pdf_pages
 
 
-def split_text(text: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split text into overlapping character-based chunks."""
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 100
+
+
+def split_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    """Split text into overlapping character chunks."""
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
-    if overlap < 0:
-        raise ValueError("overlap cannot be negative")
-    if overlap >= chunk_size:
-        raise ValueError("overlap must be smaller than chunk_size")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must be non-negative and smaller than chunk_size")
 
-    chunks = []
-    start = 0
-
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-        chunk = text[start:end].strip()
-
-        if chunk:
-            chunks.append(chunk)
-
-        if end == len(text):
-            break
-
-        start = end - overlap
-
-    return chunks
+    step = chunk_size - overlap
+    return [text[start : start + chunk_size] for start in range(0, len(text), step)]
 
 
 def create_chunks(pages: list[dict]) -> list[dict]:
-    """Create chunks and preserve their source and page metadata."""
-    chunks = []
+    chunks: list[dict] = []
+    chunk_number = 0
 
     for page in pages:
-        text_chunks = split_text(
-            text=page["text"],
-            chunk_size=CHUNK_SIZE,
-            overlap=CHUNK_OVERLAP,
-        )
-
-        for chunk_number, text in enumerate(text_chunks, start=1):
+        for text_chunk in split_text(page["text"]):
             chunks.append(
                 {
-                    "id": f"{page['source']}-page-{page['page']}-chunk-{chunk_number}",
+                    "id": f"chunk-{chunk_number}",
                     "source": page["source"],
                     "page": page["page"],
-                    "text": text,
+                    "text": text_chunk,
                 }
             )
+            chunk_number += 1
 
     return chunks
 
 
-def main() -> int:
-    pdf_files = find_pdf_files()
-
+def main() -> None:
+    pdf_folder = Path("data")
+    pdf_files = sorted(pdf_folder.glob("*.pdf"))
     if not pdf_files:
-        print(f"No PDF found. Put at least one PDF inside: {PDF_FOLDER}")
-        return 1
+        print("No PDF found. Put a PDF inside the data folder.")
+        return
 
-    chunks = []
     for pdf_path in pdf_files:
-        pages = read_pdf_pages(pdf_path)
-        chunks.extend(create_chunks(pages))
-
-    print(f"Total chunks created: {len(chunks)}")
-
-    if not chunks:
-        print("No extractable text was found. Scanned PDFs require OCR first.")
-        return 1
-
-    for chunk in chunks[:3]:
-        print(f"\n--- {chunk['id']} ---")
-        print(chunk["text"])
-
-    return 0
+        chunks = create_chunks(read_pdf_pages(pdf_path))
+        print(f"{pdf_path.name}: {len(chunks)} chunks")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
