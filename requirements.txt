@@ -1,6 +1,8 @@
-chromadb==1.5.9
-groq==1.7.0
-pypdf==6.16.2
-python-dotenv==1.2.3
-sentence-transformers==6.0.1
-streamlit==1.63.0
+chromadb
+groq
+pypdf
+sentence-transformers
+streamlit
+pytest
+
+python-dotenv
